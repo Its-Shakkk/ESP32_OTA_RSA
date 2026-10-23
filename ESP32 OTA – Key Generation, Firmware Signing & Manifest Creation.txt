@@ -1,0 +1,250 @@
+# ESP32 OTA – Key Generation, Firmware Signing & Manifest Creation
+
+## 1. Overview
+
+This document explains how to prepare firmware for a secure Over-The-Air (OTA) update using the ESP32 OTA project.
+
+The process includes:
+
+1. Generating an RSA private key and its corresponding public key.
+2. Building the ESP32 firmware binary (`.bin`).
+3. Generating a signed OTA manifest using `make_manifest.py`.
+4. Copying the firmware binary and manifest to the OTA server.
+5. Serving the firmware and manifest to the ESP32 device for OTA verification and update.
+
+**Important:** Update all file paths, firmware names, project details, version numbers, and server URLs according to your current project.
+
+---
+
+## 2. Prerequisites
+
+Before running the commands, make sure you have:
+
+- Python installed and available in your terminal.
+- The ESP32 firmware successfully built.
+- The `make_manifest.py` script available in the project's `tools` directory.
+- The Python `cryptography` package installed.
+- An OTA server directory configured to host the firmware and manifest.
+- The appropriate public key configured in the ESP32 firmware for signature verification.
+
+Install the required Python package if necessary:
+
+```bash
+python -m pip install cryptography
+```
+
+## 3. Command 1 – Generate OTA Keys
+
+This command generates a new RSA 2048-bit private key in PEM format.
+
+### Generate a new private key
+
+Run the following command in Command Prompt or a terminal with Python available:
+
+```cmd
+python -c "from cryptography.hazmat.primitives.asymmetric import rsa; from cryptography.hazmat.primitives import serialization; key = rsa.generate_private_key(public_exponent=65537, key_size=2048); open('ota_private_new.pem', 'wb').write(key.private_bytes(encoding=serialization.Encoding.PEM, format=serialization.PrivateFormat.TraditionalOpenSSL, encryption_algorithm=serialization.NoEncryption()))"
+```
+
+**Output file:** `ota_private_new.pem`
+
+### Extract the corresponding public key
+
+Run the following command to generate the public key from the private key:
+
+```cmd
+python -c "from cryptography.hazmat.primitives import serialization; private_key = serialization.load_pem_private_key(open('ota_private_new.pem', 'rb').read(), password=None); public_key = private_key.public_key(); open('ota_public_new.pem', 'wb').write(public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo))"
+```
+
+**Output file:** `ota_public_new.pem`
+
+### Key file details
+
+| File | Purpose |
+|---|---|
+| `ota_private_new.pem` | Used to sign the OTA manifest. Keep this file secret. |
+| `ota_public_new.pem` | Used by the device or verification tools to verify signatures. |
+
+**Security notes:**
+
+- Never share or commit the private key to a public repository.
+- Back up the production private key securely.
+- If you generate a new key, update the device's trusted public key accordingly before deploying firmware signed with that key.
+- Do not regenerate the production key for every firmware release unless you also intend to manage the corresponding public-key update.
+
+### Using an existing private key
+
+If your project already uses `ota_private.pem`, you can continue using that key for signing. You do not need to generate a new key for every OTA update.
+
+The signing command in Section 4 uses `ota_private.pem` as the example private key.
+
+---
+
+## 4. Command 2 – Generate the Signed Manifest and Copy Firmware
+
+This command creates the OTA manifest, signs it using the private key, and copies the firmware binary to the OTA server directory.
+
+### Example command
+
+```cmd
+python C:\Users\ShakilKhan\Desktop\ESP32-OTA-Production-Level\tools\make_manifest.py C:\Users\ShakilKhan\Desktop\ESP32-OTA-Production-Level\build\esp32_wifi_ota.bin --version 1.1.0 --build 1 --url "http://192.168.16.197:8000/firmware.bin" --hw-rev 1 --min-bootloader 1.0.0 --mandatory --secure-version 0 --project "ESP32-OTA-Demo" --board "ESP32-DevKit" --private-key ota_private.pem -o C:\OTA_Server\manifest.json && copy /Y C:\Users\ShakilKhan\Desktop\ESP32-OTA-Production-Level\build\esp32_wifi_ota.bin C:\OTA_Server\firmware.bin
+```
+
+**Before running:** Replace the example paths and URL with those used by your current project and OTA server.
+
+The example URL above uses `192.168.16.197`. If your OTA server is accessible through `172.18.5.105`, replace the URL with:
+
+```text
+http://172.18.5.105:8000/firmware.bin
+```
+
+Use the server address that the ESP32 device can actually reach.
+
+### Explanation of each argument
+
+| Argument | Description |
+|---|---|
+| `make_manifest.py` | Python script that generates the OTA manifest and its signature. |
+| `build\esp32_wifi_ota.bin` | Input firmware binary produced by the ESP32 build process. |
+| `--version 1.1.0` | Firmware version being released. Update for each release. |
+| `--build 1` | Build identifier. Increment according to your release policy. |
+| `--url` | URL from which the ESP32 downloads the firmware binary. |
+| `--hw-rev 1` | Hardware revision supported by the firmware. |
+| `--min-bootloader 1.0.0` | Minimum bootloader version accepted by the update process. |
+| `--mandatory` | Marks the update as mandatory, according to the project's manifest handling. |
+| `--secure-version 0` | Secure-version or anti-rollback value used by the project's OTA implementation. |
+| `--project "ESP32-OTA-Demo"` | Project name recorded in the manifest. |
+| `--board "ESP32-DevKit"` | Board identifier recorded in the manifest. |
+| `--private-key ota_private.pem` | Private key used to sign the manifest. |
+| `-o C:\OTA_Server\manifest.json` | Output path for the generated manifest. |
+| `&&` | Runs the firmware copy command only if manifest generation succeeds. |
+| `copy /Y` | Copies the firmware file and overwrites the destination file if it already exists. |
+
+**Note:** The exact meaning of the manifest fields depends on how `make_manifest.py` and the ESP32 OTA code implement them. Ensure that the device enforces the intended hardware, bootloader, mandatory-update, and rollback policies.
+
+### What happens when the command runs?
+
+1. Python executes `make_manifest.py`.
+2. The script reads the firmware binary and the release metadata.
+3. The script creates the manifest and signs it with the specified private key.
+4. The generated manifest is saved to `C:\OTA_Server\manifest.json`.
+5. If manifest generation succeeds, the `&&` operator allows the second command to execute.
+6. The firmware binary is copied to `C:\OTA_Server\firmware.bin`.
+
+The OTA server should then expose the manifest and firmware at the URLs configured in your OTA implementation.
+
+---
+
+## 5. Update Project Paths Before Running
+
+The paths below are examples from the development environment. Change them to match your own computer and project.
+
+| Setting | Example | What to change |
+|---|---|---|
+| Project directory | `C:\Users\ShakilKhan\Desktop\ESP32-OTA-Production-Level` | Your current project root directory. |
+| Manifest script | `tools\make_manifest.py` | Location of the manifest-generation script. |
+| Firmware binary | `build\esp32_wifi_ota.bin` | Actual firmware binary name and location. |
+| Private key | `ota_private.pem` | Path to the key used for signing. |
+| OTA server directory | `C:\OTA_Server` | Directory served by your OTA server. |
+| Firmware URL | `http://192.168.16.197:8000/firmware.bin` | URL reachable by the ESP32. |
+| Manifest output | `C:\OTA_Server\manifest.json` | Destination for the generated manifest. |
+
+For example, if your current project is located at `D:\Projects\MyESP32`, your firmware path might be:
+
+```text
+D:\Projects\MyESP32\build\esp32_wifi_ota.bin
+```
+
+Make sure the firmware file exists before executing the command.
+
+---
+
+## 6. Expected Output
+
+After successful execution, the OTA server directory should contain:
+
+```text
+C:\OTA_Server\
+    ├── manifest.json
+    └── firmware.bin
+```
+
+The project directory may also contain the key files:
+
+```text
+ESP32-OTA-Production-Level\
+    ├── ota_private.pem
+    ├── ota_public.pem
+    ├── tools\
+    │   └── make_manifest.py
+    └── build\
+        └── esp32_wifi_ota.bin
+```
+
+The key filenames shown above are examples. Your actual filenames may differ.
+
+The manifest should contain the firmware metadata and signature fields expected by your OTA implementation. Confirm the exact JSON structure by inspecting the generated `manifest.json` and the manifest parser in your ESP32 firmware.
+
+---
+
+## 7. Verification Checklist
+
+Before testing an OTA update, verify the following:
+
+- [ ] The firmware binary was built successfully.
+- [ ] The input binary path is correct.
+- [ ] The private key exists and can be loaded.
+- [ ] The manifest-generation command completes without errors.
+- [ ] `manifest.json` is generated successfully.
+- [ ] `firmware.bin` exists in the OTA server directory.
+- [ ] The firmware URL is accessible from the ESP32 device.
+- [ ] The ESP32 trusts the public key corresponding to the signing private key.
+- [ ] The firmware verifies the manifest signature before accepting the update.
+- [ ] Version, hardware revision, bootloader compatibility, and anti-rollback checks match the project's implementation.
+
+## 8. Troubleshooting
+
+**Error: Python is not recognized**
+
+Install Python or add it to the system's `PATH`. Verify using:
+
+```cmd
+python --version
+```
+
+**Error: `cryptography` module not found**
+
+Install the package:
+
+```cmd
+python -m pip install cryptography
+```
+
+**Error: Firmware file not found**
+
+Check that the build completed and that the path to `esp32_wifi_ota.bin` is correct.
+
+**Error: Private key cannot be loaded**
+
+Verify that the key path is correct, that the file contains a valid PEM-encoded private key, and that the key is compatible with the signing script.
+
+**Error: Firmware download fails**
+
+Check that the OTA server is running, that `firmware.bin` is available at the configured URL, and that the ESP32 can access the server over the network.
+
+**Error: Signature verification fails**
+
+Confirm that the device's configured public key matches the private key used to sign the manifest. Also verify that the manifest was not modified after signing and that the device uses the expected signature format and algorithm.
+
+---
+
+## 9. Important Security Considerations
+
+- Protect the private key and restrict access to it.
+- Do not commit private keys to Git.
+- Use HTTPS and appropriate server authentication when supported by your deployment.
+- Do not assume that a valid manifest signature automatically verifies the downloaded firmware binary. Ensure the device checks the firmware hash or signature as required by your design.
+- Ensure the ESP32 validates the signature before trusting the manifest metadata or accepting an update.
+- Test rollback and recovery behavior before deploying mandatory firmware updates to production devices.
+- Keep the private key and trusted public key synchronized according to your key-rotation policy.
+
+**Recommended workflow:** Build the firmware → generate or select the signing key → generate the signed manifest → copy the firmware to the OTA server → verify both files and their URLs → test the OTA update on a device.

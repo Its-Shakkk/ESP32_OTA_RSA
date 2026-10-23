@@ -1,0 +1,22 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "wifi.c"
+        "http_client.c"
+        "ota_manager.c"
+        "rollback_manager.c"
+        "nvs_storage.c"
+    INCLUDE_DIRS "."
+    PRIV_REQUIRES
+        app_update
+        driver
+        esp_adc
+        esp_event
+        esp_http_client
+        esp_netif
+        esp_wifi
+        json
+        lwip
+        mbedtls
+        nvs_flash
+)

@@ -1,0 +1,22 @@
+
+# ESP32 OTA private signing key - never upload
+ota_private.pem
+
+# Generated build output
+build/
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local environment secrets
+.env
+.env.*
+
+# IDE and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
